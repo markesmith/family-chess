@@ -1,7 +1,7 @@
 import { Chess, type Move } from 'chess.js';
 import type { Key } from 'chessground/types';
 import { Board, gameResult, toSide, uciOf, type Side } from './board';
-import { explainMove, reviewMove, type Level } from './coach';
+import { capturedBy, describeScore, explainMove, explainOpponentMove, material, reviewMove, PIECE_NAME, type Level } from './coach';
 import { getEngine, LEVELS, type Analysis } from '../engine/stockfish';
 import { OnlineSession, newCode, shareLink, type Msg } from '../net/online';
 import { dialog, h, storageDel, storageGet, storageSet, toast } from '../ui/dom';
@@ -15,7 +15,9 @@ interface Layout {
   topLabel: HTMLElement;
   bottomLabel: HTMLElement;
   status: HTMLElement;
+  score: HTMLElement;
   coach: HTMLElement;
+  opp: HTMLElement;
   moves: HTMLElement;
   actions: HTMLElement;
   extra: HTMLElement;
@@ -26,7 +28,9 @@ function layout(container: HTMLElement, title: string): Layout {
   const topLabel = h('div', { class: 'player-label' });
   const bottomLabel = h('div', { class: 'player-label' });
   const status = h('div', { class: 'status', role: 'status', 'aria-live': 'polite' });
+  const score = h('div', { class: 'score', 'aria-live': 'polite' });
   const coach = h('div', { class: 'coach', hidden: true, 'aria-live': 'polite' });
+  const opp = h('div', { class: 'coach opp', hidden: true, 'aria-live': 'polite' });
   const moves = h('ol', { class: 'moves', 'aria-label': 'Moves played' });
   const actions = h('div', { class: 'actions' });
   const extra = h('div', { class: 'extra' });
@@ -34,10 +38,10 @@ function layout(container: HTMLElement, title: string): Layout {
     'div',
     { class: 'play' },
     h('div', { class: 'board-col' }, topLabel, h('div', { class: 'board-wrap' }, boardEl), bottomLabel),
-    h('aside', { class: 'panel' }, h('h1', { class: 'panel-title' }, title), status, actions, coach, extra, moves),
+    h('aside', { class: 'panel' }, h('h1', { class: 'panel-title' }, title), status, score, actions, coach, opp, extra, moves),
   );
   container.replaceChildren(root);
-  return { root, boardEl, topLabel, bottomLabel, status, coach, moves, actions, extra };
+  return { root, boardEl, topLabel, bottomLabel, status, score, coach, opp, moves, actions, extra };
 }
 
 function renderMoves(el: HTMLElement, chess: Chess) {
@@ -51,12 +55,45 @@ function renderMoves(el: HTMLElement, chess: Chess) {
   el.scrollTop = el.scrollHeight;
 }
 
+const VALUE_WORDS: Record<number, string> = { 1: 'a pawn', 3: 'a knight or bishop', 5: 'a rook', 9: 'a queen' };
+
+function capturedRow(board: Board, side: Side) {
+  const caps = capturedBy(board.chess)[side === 'white' ? 'w' : 'b'];
+  const m = material(board.chess);
+  const lead = side === 'white' ? m.w - m.b : m.b - m.w;
+  const victim = side === 'white' ? 'black' : 'white';
+  const row = h('span', { class: 'captured cg-wrap', 'aria-label': caps.length ? `Captured: ${caps.map((c) => PIECE_NAME[c]).join(', ')}` : 'No captures yet' });
+  for (const c of caps) {
+    const el = document.createElement('piece');
+    el.className = `${PIECE_NAME[c]} ${victim}`;
+    row.append(el);
+  }
+  if (lead > 0) row.append(h('span', { class: 'lead' }, `+${lead}`));
+  return row;
+}
+
+/** One-line material score, e.g. "White is ahead by 3 (a knight or bishop)". */
+function materialText(board: Board): string {
+  const m = material(board.chess);
+  const d = m.w - m.b;
+  if (d === 0) return 'Material: even';
+  const who = d > 0 ? 'White' : 'Black';
+  const n = Math.abs(d);
+  const worth = VALUE_WORDS[n] ? ` (worth ${VALUE_WORDS[n]})` : '';
+  return `Material: ${who} is ahead by ${n} point${n === 1 ? '' : 's'}${worth}`;
+}
+
+function showScore(l: Layout, board: Board, engineText?: string) {
+  l.score.replaceChildren(h('span', {}, materialText(board)));
+  if (engineText) l.score.append(h('span', { class: 'engine-eval' }, `Computer's assessment: ${engineText}`));
+}
+
 function labels(l: Layout, board: Board, names: Record<Side, string>) {
   const bottom = board.orientation;
   const top: Side = bottom === 'white' ? 'black' : 'white';
   const turn = board.turn;
-  l.bottomLabel.replaceChildren(h('span', { class: `dot ${bottom}` }), names[bottom]);
-  l.topLabel.replaceChildren(h('span', { class: `dot ${top}` }), names[top]);
+  l.bottomLabel.replaceChildren(h('span', { class: `dot ${bottom}` }), h('span', { class: 'name' }, names[bottom]), capturedRow(board, bottom));
+  l.topLabel.replaceChildren(h('span', { class: `dot ${top}` }), h('span', { class: 'name' }, names[top]), capturedRow(board, top));
   l.bottomLabel.classList.toggle('to-move', turn === bottom && !board.chess.isGameOver());
   l.topLabel.classList.toggle('to-move', turn === top && !board.chess.isGameOver());
 }
@@ -104,6 +141,7 @@ export function renderLocal(container: HTMLElement): Cleanup {
   function refresh() {
     const res = gameResult(board.chess);
     l.status.textContent = res ?? `${board.turn === 'white' ? 'White' : 'Black'} to move${board.chess.inCheck() ? ' — check!' : ''}`;
+    showScore(l, board);
     renderMoves(l.moves, board.chess);
     window.setTimeout(() => labels(l, board, names), 0);
   }
@@ -152,6 +190,8 @@ interface CpuSaved {
   player: Side;
   startFen?: string;
   coach: boolean;
+  /** Explain each of the computer's moves. */
+  explainCpu?: boolean;
   title?: string;
 }
 
@@ -210,8 +250,20 @@ export function renderComputer(container: HTMLElement, start?: CpuStart): Cleanu
     else l.status.textContent = `Your move${board.chess.inCheck() ? ' — you are in check!' : ''}`;
     hintBtn.textContent = hintStep === 0 ? 'Hint' : hintStep < 3 ? `Another hint (${hintStep}/3)` : 'Hint (3/3)';
     hintBtn.disabled = !!res || thinking || board.turn !== state.player;
+    showScore(l, board, state.coach ? evalText : undefined);
     renderMoves(l.moves, board.chess);
     labels(l, board, names());
+  }
+
+  let evalText: string | undefined;
+  /** Update the computer's assessment of the current position (shown with the score). */
+  async function updateEval() {
+    const fen = board.chess.fen();
+    if (!state.coach || board.chess.isGameOver()) return;
+    const a = await analyse(fen);
+    if (fen !== board.chess.fen()) return;
+    evalText = describeScore(a, board.chess.turn() === 'w');
+    refresh();
   }
 
   async function onPlayerMove(m: Move) {
@@ -264,7 +316,21 @@ export function renderComputer(container: HTMLElement, start?: CpuStart): Cleanu
     save();
     refresh();
     if (board.chess.isGameOver()) return finish();
-    if (state.coach) void analyse(board.chess.fen()); // warm up the hint
+    if (state.explainCpu !== false) void explainCpuMove(fen, uci, myGen);
+    if (state.coach) void updateEval();
+  }
+
+  async function explainCpuMove(fen: string, uci: string, myGen: number) {
+    const san = board.chess.history().at(-1) ?? uci;
+    l.opp.hidden = false;
+    l.opp.className = 'coach opp info';
+    l.opp.innerHTML = `<strong>Computer played ${esc(san)}.</strong> <em>Working out why…</em>`;
+    const [before, after] = await Promise.all([analyse(fen), analyse(board.chess.fen())]);
+    if (myGen !== gen) return;
+    const note = explainOpponentMove(fen, uci, before, after, coachLevel);
+    if (!note) return (l.opp.hidden = true);
+    l.opp.className = `coach opp ${note.mistake ? 'warn' : 'info'}`;
+    l.opp.innerHTML = `<strong>Computer played ${esc(san)}.</strong> ${esc(note.text)}`;
   }
 
   function finish() {
@@ -314,10 +380,13 @@ export function renderComputer(container: HTMLElement, start?: CpuStart): Cleanu
     if (board.turn !== state.player && board.chess.history().length) board.undo();
     board.clearShapes();
     l.coach.hidden = true;
+    l.opp.hidden = true;
+    evalText = undefined;
     board.setControl(state.player);
     save();
     refresh();
     if (board.turn !== state.player) void computerMove(gen);
+    else void updateEval();
   }
 
   async function newGame() {
@@ -347,12 +416,14 @@ export function renderComputer(container: HTMLElement, start?: CpuStart): Cleanu
       ),
     );
     const coachBox = h('input', { type: 'checkbox', checked: state.coach }) as HTMLInputElement;
+    const explainBox = h('input', { type: 'checkbox', checked: state.explainCpu !== false }) as HTMLInputElement;
     form.append(
       h('h3', {}, 'Computer strength'),
       levelSel,
       h('h3', {}, 'Play as'),
       colourSel,
       h('label', { class: 'toggle' }, coachBox, ' Coach comments on each of my moves'),
+      h('label', { class: 'toggle' }, explainBox, " Explain the computer's moves"),
     );
     const ok = await dialog('New game', form, [
       { label: 'Cancel', value: 'no' },
@@ -363,7 +434,7 @@ export function renderComputer(container: HTMLElement, start?: CpuStart): Cleanu
     let col = (form.querySelector('input[name=col]:checked') as HTMLInputElement)?.value ?? 'white';
     if (col === 'random') col = Math.random() < 0.5 ? 'white' : 'black';
     gen++;
-    state = { ...state, moves: [], level: lvl, player: col as Side, coach: coachBox.checked };
+    state = { ...state, moves: [], level: lvl, player: col as Side, coach: coachBox.checked, explainCpu: explainBox.checked };
     restart();
   }
 
@@ -376,18 +447,24 @@ export function renderComputer(container: HTMLElement, start?: CpuStart): Cleanu
     board.setControl(state.player);
     board.clearShapes();
     l.coach.hidden = true;
+    l.opp.hidden = true;
+    evalText = undefined;
     save();
     refresh();
     if (board.turn !== state.player) void computerMove(gen);
-    else if (state.coach) void analyse(board.chess.fen());
+    else void updateEval();
   }
 
   const hintBtn = btn('Hint', () => void hint(), 'btn primary');
   const coachToggle = h('input', { type: 'checkbox', checked: state.coach }) as HTMLInputElement;
   coachToggle.addEventListener('change', () => {
     state.coach = coachToggle.checked;
-    if (!state.coach) l.coach.hidden = true;
+    if (!state.coach) {
+      l.coach.hidden = true;
+      evalText = undefined;
+    } else void updateEval();
     save();
+    refresh();
   });
 
   l.actions.append(
@@ -399,13 +476,22 @@ export function renderComputer(container: HTMLElement, start?: CpuStart): Cleanu
       refresh();
     }),
   );
-  l.extra.append(h('label', { class: 'toggle' }, coachToggle, ' Coach comments on my moves'));
+  const explainToggle = h('input', { type: 'checkbox', checked: state.explainCpu !== false }) as HTMLInputElement;
+  explainToggle.addEventListener('change', () => {
+    state.explainCpu = explainToggle.checked;
+    if (!state.explainCpu) l.opp.hidden = true;
+    save();
+  });
+  l.extra.append(
+    h('label', { class: 'toggle' }, coachToggle, ' Coach comments on my moves'),
+    h('label', { class: 'toggle' }, explainToggle, " Explain the computer's moves"),
+  );
 
   board.loadMoves(state.startFen, state.moves);
   if (start?.intro) showCoach(l, esc(start.intro));
   refresh();
   if (!board.chess.isGameOver() && board.turn !== state.player) void computerMove(gen);
-  else if (state.coach) void analyse(board.chess.fen());
+  else void updateEval();
 
   if (!start?.practice && !storageGet<CpuSaved | null>(CPU_KEY, null)) void newGame();
 
@@ -526,6 +612,7 @@ export function renderOnline(container: HTMLElement, role: 'host' | 'guest', cod
     else if (!connected) s = statusDetail || (role === 'host' ? 'Waiting for the other player to join…' : 'Connecting…');
     else s = board.turn === me ? `Your move${board.chess.inCheck() ? ' — check!' : ''}` : "Opponent's move";
     l.status.textContent = s;
+    showScore(l, board);
     renderMoves(l.moves, board.chess);
     labels(l, board, me === 'white' ? { white: 'You', black: 'Opponent' } : { white: 'Opponent', black: 'You' });
     shareBox.hidden = connected;

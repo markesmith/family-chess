@@ -45,7 +45,7 @@ function isDefended(chess: Chess, sq: Square, by: Color) {
 }
 
 /** A piece is "loose" if attacked and either undefended or attacked by something cheaper. */
-function isLoose(chess: Chess, sq: Square): boolean {
+export function isLoose(chess: Chess, sq: Square): boolean {
   const p = chess.get(sq);
   if (!p || p.type === 'k') return false;
   const attackers = chess.attackers(sq, other(p.color));
@@ -105,8 +105,18 @@ export function describeScore(a: Analysis, whiteToMove: boolean): string {
   return `${cp > 0 ? 'White' : 'Black'} is better by about ${pawns} pawns`;
 }
 
-/** Explain why a move (normally the engine's best move) is good. */
-export function explainMove(fen: string, uci: string, level: Level, analysis?: Analysis): Explanation | null {
+/**
+ * Explain why a move (normally the engine's best move) is good.
+ * `who` says whose move it is: 'you' (the player, for hints) or 'opponent'
+ * (to explain the computer's move to the player).
+ */
+export function explainMove(
+  fen: string,
+  uci: string,
+  level: Level,
+  analysis?: Analysis,
+  who: 'you' | 'opponent' = 'you',
+): Explanation | null {
   const before = new Chess(fen);
   const move = uciToMove(fen, uci);
   if (!move) return null;
@@ -119,6 +129,10 @@ export function explainMove(fen: string, uci: string, level: Level, analysis?: A
   const reasons: string[] = [];
   let idea = '';
   const simple = level === 'beginner';
+  const opp = who === 'opponent';
+  const your = opp ? 'its' : 'your';
+  const Your = opp ? "The computer's" : 'Your';
+  const theyMust = opp ? 'you must' : 'your opponent must';
 
   // 1. Checkmate
   if (after.isCheckmate()) {
@@ -136,7 +150,7 @@ export function explainMove(fen: string, uci: string, level: Level, analysis?: A
     themes.push('mating attack');
     idea = `You can force checkmate in ${analysis.mate}. Forcing moves (checks first, then captures, then threats) are the way in.`;
     reasons.push(
-      `${move.san} starts a forced sequence: ${pvToSan(fen, analysis.pv, analysis.mate * 2 - 1)}. Each move leaves the opponent only bad choices.`,
+      `${move.san} starts a forced sequence: ${pvToSan(fen, analysis.pv, analysis.mate * 2 - 1)}. Each move leaves ${opp ? 'you' : 'the opponent'} only bad choices.`,
     );
   }
 
@@ -154,13 +168,15 @@ export function explainMove(fen: string, uci: string, level: Level, analysis?: A
         ? 'One of your opponent\'s pieces is not protected. Can you take it for free?'
         : 'Count attackers and defenders: something of your opponent\'s is insufficiently protected.';
       reasons.push(
-        `${move.san} wins the ${capName} on ${move.to} for free — nothing can safely take back. Always check: "Is that piece defended?"`,
+        opp
+          ? `${move.san} wins your ${capName} on ${move.to} for free — nothing can safely take back. Before each move, check what your opponent could capture.`
+          : `${move.san} wins the ${capName} on ${move.to} for free — nothing can safely take back. Always check: "Is that piece defended?"`,
       );
     } else if (VALUE[move.captured] > VALUE[move.piece]) {
       themes.push('winning trade');
       idea ||= 'You can trade a cheaper piece for a more valuable one.';
       reasons.push(
-        `${move.san} gives up a ${piece} (worth ${VALUE[move.piece]}) for a ${capName} (worth ${VALUE[move.captured]}). Even if they take back, you come out ahead.`,
+        `${move.san} gives up a ${piece} (worth ${VALUE[move.piece]}) for a ${capName} (worth ${VALUE[move.captured]}). Even after a recapture, ${opp ? 'the computer comes' : 'you come'} out ahead.`,
       );
     } else {
       themes.push('exchange');
@@ -184,12 +200,12 @@ export function explainMove(fen: string, uci: string, level: Level, analysis?: A
       ? 'One of your pieces can attack two things at once. That is called a fork.'
       : 'Look for a double attack: one move that creates two threats the opponent cannot both meet.';
     reasons.push(
-      `${move.san} is a fork: the ${piece} attacks the ${names} at the same time. The opponent can only save one.`,
+      `${move.san} is a fork: the ${piece} attacks ${opp ? 'your' : 'the'} ${names} at the same time. ${opp ? 'You' : 'The opponent'} can only save one.`,
     );
   } else if (valuable.length === 1 && valuable[0].type !== 'k' && !move.captured) {
     themes.push('threat');
     reasons.push(
-      `${move.san} attacks the ${PIECE_NAME[valuable[0].type]} on ${valuable[0].sq}, so your opponent must spend a move dealing with it.`,
+      `${move.san} attacks ${opp ? 'your' : 'the'} ${PIECE_NAME[valuable[0].type]} on ${valuable[0].sq}, so ${theyMust} spend a move dealing with it.`,
     );
   }
 
@@ -198,7 +214,7 @@ export function explainMove(fen: string, uci: string, level: Level, analysis?: A
     themes.push('check');
     reasons.push(
       simple
-        ? `${move.san} gives check, so your opponent must deal with the threat to the king before anything else.`
+        ? `${move.san} gives check, so ${theyMust} deal with the threat to the king before anything else.`
         : `${move.san} is check — a forcing move that limits the opponent's replies.`,
     );
   }
@@ -210,7 +226,9 @@ export function explainMove(fen: string, uci: string, level: Level, analysis?: A
       ? 'One of your pieces is in danger. Which one is under attack?'
       : 'Before your own plans, check what your opponent is threatening.';
     reasons.push(
-      `Your ${piece} on ${move.from} was under attack and not safely protected. ${move.san} moves it to safety. Always ask "What is my opponent threatening?" before you move.`,
+      opp
+        ? `${Your} ${piece} on ${move.from} was under attack and not safely protected, so ${move.san} moves it to safety.`
+        : `Your ${piece} on ${move.from} was under attack and not safely protected. ${move.san} moves it to safety. Always ask "What is my opponent threatening?" before you move.`,
     );
   }
 
@@ -241,13 +259,13 @@ export function explainMove(fen: string, uci: string, level: Level, analysis?: A
         ? 'Bring a new piece into the game.'
         : 'In the opening, every move should develop a piece or fight for the centre.';
       reasons.push(
-        `${move.san} develops your ${piece} from its starting square towards the centre, where it controls more squares. In the opening, get your knights and bishops out before moving the same piece twice.`,
+        `${move.san} develops ${your} ${piece} from its starting square towards the centre, where it controls more squares. In the opening, knights and bishops should come out before any piece moves twice.`,
       );
     } else if (move.piece === 'p' && ['d', 'e', 'c'].includes(move.from[0])) {
       themes.push('centre');
       idea ||= 'Fight for the centre squares d4, e4, d5 and e5.';
       reasons.push(
-        `${move.san} claims space in the centre. Pieces placed behind central pawns have more room, and the opponent's pieces have less.`,
+        `${move.san} claims space in the centre. Pieces placed behind central pawns have more room, and ${opp ? 'yours' : "the opponent's pieces"} have less.`,
       );
     }
   }
@@ -262,7 +280,7 @@ export function explainMove(fen: string, uci: string, level: Level, analysis?: A
     themes.push('passed pawn');
     idea ||= 'You have a passed pawn — no enemy pawn can stop it. "Passed pawns must be pushed."';
     reasons.push(
-      `${move.san} advances a passed pawn: no enemy pawn can block or capture it, so it ties down your opponent's pieces as it nears promotion.`,
+      `${move.san} advances a passed pawn: no enemy pawn can block or capture it, so it ties down ${opp ? 'your' : "your opponent's"} pieces as it nears promotion.`,
     );
   }
 
@@ -290,6 +308,89 @@ export function explainMove(fen: string, uci: string, level: Level, analysis?: A
     : `The key piece is your ${piece} on ${move.from}. Where can it go to ${themes.includes('fork') ? 'attack two targets' : themes.includes('rescue') ? 'be safe' : 'do the most'}?`;
 
   return { idea: idea || 'Think about what each of your pieces could do.', focus, full, themes, move };
+}
+
+/** Material on the board, using standard piece values. */
+export function material(chess: Chess): { w: number; b: number } {
+  const m = { w: 0, b: 0 };
+  for (const p of allPieces(chess)) if (p.type !== 'k') m[p.color] += VALUE[p.type];
+  return m;
+}
+
+/** Pieces each side has captured so far, from the move history. */
+export function capturedBy(chess: Chess): Record<Color, PieceSymbol[]> {
+  const out: Record<Color, PieceSymbol[]> = { w: [], b: [] };
+  for (const m of chess.history({ verbose: true })) if (m.captured) out[m.color].push(m.captured);
+  const order: PieceSymbol[] = ['q', 'r', 'b', 'n', 'p'];
+  for (const c of ['w', 'b'] as Color[]) out[c].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  return out;
+}
+
+/** Pieces of `color` that are attacked and not safely defended. */
+export function loosePieces(chess: Chess, color: Color) {
+  return allPieces(chess).filter((p) => p.color === color && isLoose(chess, p.sq));
+}
+
+export interface OpponentNote {
+  text: string;
+  /** True if the computer's move was a mistake the player can exploit. */
+  mistake: boolean;
+}
+
+/**
+ * Explain the computer's move to the player: what it does, why it might have
+ * been played, and what it now threatens.
+ * `before`: analysis with the computer to move. `after`: analysis with the player to move.
+ */
+export function explainOpponentMove(fen: string, uci: string, before: Analysis, after: Analysis, level: Level): OpponentNote | null {
+  const move = uciToMove(fen, uci);
+  if (!move) return null;
+  const pawns = (a: Analysis) => (a.mate !== undefined ? (a.mate > 0 ? 100 : -100) : (a.cp ?? 0) / 100);
+  const loss = pawns(before) + pawns(after); // how much the computer's move gave away
+  const pos = new Chess(fen);
+  pos.move(move);
+  const parts: string[] = [];
+
+  if (loss >= 1.5 && pawns(after) > 0.5) {
+    let chance = 'It gives you a chance to gain the advantage.';
+    const reply = after.bestmove ? uciToMove(pos.fen(), after.bestmove) : null;
+    if (after.mate !== undefined && after.mate > 0) chance = 'You now have a way to force checkmate!';
+    else if (reply?.captured) chance = 'Something of the computer\'s can now be won.';
+    parts.push(`That was a mistake by the computer. ${chance} Can you find the best reply? (Use Hint if you need help.)`);
+    return { text: parts.join(' '), mistake: true };
+  }
+
+  const ex = explainMove(fen, uci, level, undefined, 'opponent');
+  if (ex && !ex.themes.includes('improvement')) parts.push(ex.full);
+  else parts.push(guessPurpose(fen, move));
+
+  const me = move.color === 'w' ? 'b' : 'w';
+  if (pos.inCheck()) parts.push('You are in check — you must deal with that first.');
+  const loose = loosePieces(pos, me).filter((p) => pos.attackers(p.sq, move.color).length);
+  if (loose.length && !pos.inCheck()) {
+    const list = loose.map((p) => `${PIECE_NAME[p.type]} on ${p.sq}`).join(' and ');
+    parts.push(`Watch out: your ${list} ${loose.length > 1 ? 'are' : 'is'} under attack and not safely defended.`);
+  }
+  return { text: parts.join(' '), mistake: false };
+}
+
+/** For quiet moves: describe the plan in general terms. */
+function guessPurpose(fen: string, move: Move): string {
+  const before = new Chess(fen);
+  const after = new Chess(fen);
+  after.move(move);
+  const piece = PIECE_NAME[move.piece];
+  const centre = ['d4', 'e4', 'd5', 'e5'] as Square[];
+  const controlsCentre = centre.filter((sq) => after.attackers(sq, move.color).includes(move.to as Square)).length;
+  if (move.piece === 'p' && (move.to[0] === 'g' || move.to[0] === 'h' || move.to[0] === 'a')) {
+    return `${move.san} is a pawn move on the edge: it gains space, or gives the king or a bishop a useful square.`;
+  }
+  if (move.piece === 'r') return `${move.san} brings the rook to a better file or rank, where it can become active later.`;
+  if (move.piece === 'k' && materialCount(before) > 6) return `${move.san} tucks the king onto a safer square.`;
+  if (controlsCentre) {
+    return `${move.san} repositions the computer's ${piece} so that it controls more of the centre.`;
+  }
+  return `${move.san} is a quiet move that improves the computer's ${piece} and prepares its next plans. No immediate threat — use the time to improve your own position.`;
 }
 
 export interface Review {
@@ -334,7 +435,7 @@ export function reviewMove(fen: string, played: Move, before: Analysis, after: A
     const hanging = !afterPos.isAttacked(punish.to as Square, played.color) ? ' and nothing defends it' : '';
     parts.push(`Your opponent can reply ${punish.san}, taking your ${lost} on ${punish.to}${hanging}. Before each move, ask: "After my move, what can my opponent capture?"`);
   } else if (punish) {
-    const ex = explainMove(afterPos.fen(), after.bestmove, level);
+    const ex = explainMove(afterPos.fen(), after.bestmove, level, undefined, 'opponent');
     if (ex && !ex.themes.includes('improvement')) {
       parts.push(`It lets your opponent play ${punish.san}: ${ex.full}`);
     }
