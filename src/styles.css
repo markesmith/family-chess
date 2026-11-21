@@ -270,3 +270,8 @@ p { margin: 0 0 0.75em; }
 .score { display: flex; flex-direction: column; gap: 2px; font-size: 0.95rem; color: var(--muted); }
 .score .engine-eval { font-size: 0.88rem; }
 .coach.opp strong:first-child { display: inline; }
+
+/* Captured pieces sit on a light strip (the board's light-square colour) so
+   black and white pieces are both visible in light and dark mode. */
+.captured:not(:empty) { background: #f0d9b5; border: 1px solid #b58863; border-radius: 999px; padding: 1px 10px 1px 4px; }
+.captured .lead { color: #1d6b38 !important; }
