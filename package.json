@@ -1,0 +1,27 @@
+{
+  "name": "family-chess",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chess to play with family across phones and desktop, plus a training mode that explains the strategy behind moves.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "copy-engine": "node scripts/copy-engine.mjs",
+    "predev": "npm run copy-engine",
+    "dev": "vite --host",
+    "prebuild": "npm run copy-engine",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "verify-lessons": "node --experimental-strip-types scripts/verify-lessons.ts"
+  },
+  "dependencies": {
+    "chess.js": "^1.4.0",
+    "chessground": "^9.2.1",
+    "peerjs": "^1.5.5",
+    "stockfish": "^19.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  }
+}

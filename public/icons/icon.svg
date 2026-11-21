@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#2b2118"/>
+  <g fill="#f0d9b5">
+    <rect x="64" y="64" width="96" height="96"/><rect x="256" y="64" width="96" height="96"/>
+    <rect x="160" y="160" width="96" height="96"/><rect x="352" y="160" width="96" height="96"/>
+    <rect x="64" y="256" width="96" height="96"/><rect x="256" y="256" width="96" height="96"/>
+    <rect x="160" y="352" width="96" height="96"/><rect x="352" y="352" width="96" height="96"/>
+  </g>
+  <g fill="#b58863">
+    <rect x="160" y="64" width="96" height="96"/><rect x="352" y="64" width="96" height="96"/>
+    <rect x="64" y="160" width="96" height="96"/><rect x="256" y="160" width="96" height="96"/>
+    <rect x="160" y="256" width="96" height="96"/><rect x="352" y="256" width="96" height="96"/>
+    <rect x="64" y="352" width="96" height="96"/><rect x="256" y="352" width="96" height="96"/>
+  </g>
+  <path d="M206 408h150c4 0 7-3 7-7v-16c0-4-3-7-7-7h-8c-6-44-2-86 14-120 10-22 4-48-14-64-16-15-38-24-62-26l-12-30-18 30c-30 8-56 30-70 60l-28 46c-5 9-2 20 7 25l12 7c8 4 17 2 22-5l18-24c8 2 18 0 26-6-6 40-26 70-48 92-3 3-4 6-4 10v11c0 4 3 7 7 7z" fill="#fff" stroke="#2b2118" stroke-width="10" stroke-linejoin="round"/>
+</svg>
