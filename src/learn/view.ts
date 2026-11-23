@@ -9,6 +9,7 @@ import { h } from '../ui/dom';
 import { completedLessons, getSettings, markLessonDone, saveSettings } from '../ui/settings';
 import { GUIDES } from './guides';
 import { LESSONS, lessonById, lessonsFor, type Lesson, type Phase, type Tier } from './lessons';
+import { CHAPTERS } from './basics';
 
 type Cleanup = () => void;
 
@@ -72,6 +73,17 @@ export function renderLearnHub(container: HTMLElement): Cleanup {
           'p',
           { class: 'lead' },
           'A game of chess has three phases. Read the guide for each phase, then try the lessons: each one asks you to find a move and explains the strategy behind it.',
+        ),
+        h(
+          'a',
+          { class: 'card first-steps', href: '#/learn/basics' },
+          h('span', { class: 'tile-icon', 'aria-hidden': 'true' }, '♙'),
+          h(
+            'span',
+            {},
+            h('strong', {}, 'New to chess? Start with First steps'),
+            h('span', { class: 'muted' }, 'The board, how every piece moves, check, checkmate and the special rules — with practice on the board.'),
+          ),
         ),
         h('div', { class: 'level-row' }, h('span', {}, 'My level:'), levelPicker(() => draw())),
         h(
@@ -240,6 +252,11 @@ export function renderLesson(container: HTMLElement, id: string): Cleanup {
   const hintBtn = h('button', { class: 'btn primary' }, 'Hint') as HTMLButtonElement;
   const endBox = h('div', { class: 'end-box', hidden: true });
 
+  // Rules puzzles from the First steps course link back to their chapter.
+  const basicsChapter = lesson.phase === 'basics' ? CHAPTERS.find((c) => c.puzzles?.includes(lesson.id)) : undefined;
+  const backHref = basicsChapter ? `#/learn/basics/${basicsChapter.id}` : `#/learn/guide/${lesson.phase}`;
+  const backLabel = basicsChapter ? basicsChapter.title : GUIDES[lesson.phase as Phase].title;
+
   container.replaceChildren(
     h(
       'div',
@@ -248,9 +265,9 @@ export function renderLesson(container: HTMLElement, id: string): Cleanup {
       h(
         'aside',
         { class: 'panel' },
-        h('a', { class: 'back', href: `#/learn/guide/${lesson.phase}` }, `← ${GUIDES[lesson.phase].title}`),
+        h('a', { class: 'back', href: backHref }, `← ${backLabel}`),
         h('h1', { class: 'panel-title' }, lesson.title),
-        h('div', { class: 'badges' }, tierBadge(lesson.tier), h('span', { class: 'badge' }, GUIDES[lesson.phase].title.replace('The ', ''))),
+        h('div', { class: 'badges' }, basicsChapter ? h('span', { class: 'badge beginner' }, 'First steps') : tierBadge(lesson.tier), basicsChapter ? null : h('span', { class: 'badge' }, GUIDES[lesson.phase as Phase].title.replace('The ', ''))),
         h('p', { class: 'intro' }, lesson.intro),
         progress,
         h(
@@ -324,6 +341,11 @@ export function renderLesson(container: HTMLElement, id: string): Cleanup {
       say(`<strong>${esc(m.san)}?</strong> ${esc(special)} Try again.`, step.notIt?.[m.san] ? 'warn' : 'bad');
       return false;
     }
+    if (lesson!.rulesOnly) {
+      // Rules puzzles: any other legal move is fine chess-wise, it just isn't the rule being taught.
+      say(`<strong>${esc(m.san)}</strong> is a legal move. ${esc(lesson!.otherGood ?? step.hints[0])} Try again.`, 'warn');
+      return false;
+    }
     say(`<strong>${esc(m.san)}</strong> — let me check that…`, 'info');
     void judge(m);
     return false;
@@ -395,7 +417,9 @@ export function renderLesson(container: HTMLElement, id: string): Cleanup {
           ? h('a', { class: 'btn primary', href: `#/learn/practice/${lesson!.id}` }, lesson!.practice.label)
           : null,
         next ? h('a', { class: lesson!.practice ? 'btn' : 'btn primary', href: `#/learn/lesson/${next.id}` }, `Next: ${next.title}`) : null,
-        h('a', { class: 'btn', href: '#/learn' }, 'All lessons'),
+        basicsChapter
+          ? h('a', { class: 'btn', href: backHref }, `Back to: ${basicsChapter.title}`)
+          : h('a', { class: 'btn', href: '#/learn' }, 'All lessons'),
       ),
     );
     drawProgress();
@@ -436,6 +460,12 @@ export function renderLesson(container: HTMLElement, id: string): Cleanup {
 }
 
 function nextLesson(current: Lesson, idx: number): Lesson | undefined {
+  if (current.phase === 'basics') {
+    const ch = CHAPTERS.find((c) => c.puzzles?.includes(current.id));
+    const list = ch?.puzzles ?? [];
+    const nextId = list[list.indexOf(current.id) + 1];
+    return nextId ? lessonById(nextId) : undefined;
+  }
   // Prefer the next lesson in the same phase, then the next in the list.
   return LESSONS.slice(idx + 1).find((l) => l.phase === current.phase) ?? LESSONS[idx + 1];
 }

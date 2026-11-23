@@ -101,8 +101,9 @@ for (const lesson of LESSONS) {
   }
   for (const [i, step] of lesson.steps.entries()) {
     const fen = chess.fen();
-    const best = await evaluate(fen);
-    console.log(`  step ${i + 1}: engine best ${san(fen, best.best)} (${best.score.toFixed(2)})`);
+    // Rules puzzles only need legal answers, so skip the engine for them.
+    const best = lesson.rulesOnly ? { score: 0, best: '' } : await evaluate(fen);
+    if (!lesson.rulesOnly) console.log(`  step ${i + 1}: engine best ${san(fen, best.best)} (${best.score.toFixed(2)})`);
     let firstAccepted: string | null = null;
     if (step.accept.includes('#')) {
       const mates = chess.moves().filter((m) => {
@@ -119,6 +120,11 @@ for (const lesson of LESSONS) {
         warn(`accepted move ${a} is illegal (legal: ${chess.moves().join(' ')})`);
         continue;
       }
+      if (lesson.rulesOnly) {
+        console.log(`    accept ${a}: legal ✓`);
+        firstAccepted ??= a;
+        continue;
+      }
       const s = await moveScore(fen, a);
       const loss = best.score - s;
       const ok = best.score >= 50 ? s >= 50 : loss <= 0.6;
@@ -131,6 +137,7 @@ for (const lesson of LESSONS) {
         warn(`"wrong" move ${w} is illegal`);
         continue;
       }
+      if (lesson.rulesOnly) continue;
       const s = await moveScore(fen, w);
       const acceptedBest = firstAccepted ? await moveScore(fen, firstAccepted) : best.score;
       const gap = acceptedBest - s;
@@ -153,6 +160,18 @@ for (const lesson of LESSONS) {
       warn('step has no reply but more steps follow');
     }
   }
+}
+
+// First steps drills: the "best" move counts must match an exhaustive search.
+const { CHAPTERS } = await import('../src/learn/basics.ts');
+const { solveDrill } = await import('../src/learn/drill.ts');
+console.log('\nFirst steps drills');
+for (const c of CHAPTERS) {
+  for (const d of c.drills ?? []) {
+    const n = solveDrill(d);
+    if (n !== d.best) warn(`${c.id}: drill from ${d.from} says best ${d.best}, search finds ${n}`);
+  }
+  for (const pid of c.puzzles ?? []) if (!LESSONS.some((l) => l.id === pid)) warn(`${c.id}: unknown puzzle ${pid}`);
 }
 
 console.log(problems ? `\n${problems} problem(s) found.` : '\nAll lessons verified.');

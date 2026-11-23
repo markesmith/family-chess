@@ -33,7 +33,10 @@ export interface LessonStep {
 
 export interface Lesson {
   id: string;
-  phase: Phase;
+  /** 'basics' = a rules puzzle from the First steps course. */
+  phase: Phase | 'basics';
+  /** Teaches a rule rather than the best move: the checker only confirms the answers are legal. */
+  rulesOnly?: boolean;
   tier: Tier;
   title: string;
   /** One line for the lesson list. */
@@ -50,7 +53,7 @@ export interface Lesson {
   practice?: { fen: string; label: string };
 }
 
-export const LESSONS: Lesson[] = [
+const MAIN_LESSONS: Lesson[] = [
   /* ---------------------------- OPENING ---------------------------- */
   {
     id: 'centre',
@@ -677,6 +680,245 @@ export const LESSONS: Lesson[] = [
   },
 ];
 
+/* ------------------- FIRST STEPS: rules puzzles ------------------- */
+/* These teach the rules themselves, so the answer need not be the strongest move. */
+
+export const RULE_LESSONS: Lesson[] = [
+  {
+    id: 'rules-capture-values',
+    phase: 'basics',
+    tier: 'beginner',
+    rulesOnly: true,
+    title: 'Which piece to take?',
+    summary: 'Use the piece values to choose the best capture.',
+    intro:
+      'Your rook on d4 can capture the black pawn on a4 or the black queen on d8. Remember the values: pawn 1, rook 5, queen 9. Which capture gains you the most?',
+    fen: '3qk3/8/8/8/p2R4/8/8/4K3 w - - 0 1',
+    steps: [
+      {
+        accept: ['Rxd8+'],
+        wrong: { Rxa4: 'That wins a pawn (worth 1), but the queen (worth 9) was also there for the taking.' },
+        hints: ['Count the value of each piece you could take.', 'Look straight up the d-file.', 'Rxd8+ takes the queen.'],
+        focus: ['d4', 'd8', 'a4'],
+        explain:
+          'You took the queen, worth 9. The black king can take your rook back (Kxd8), but you swapped a rook (5) for a queen (9), so you are 4 points ahead.',
+      },
+    ],
+    source: 'Standard piece values',
+  },
+  {
+    id: 'rules-check-capture',
+    phase: 'basics',
+    tier: 'beginner',
+    rulesOnly: true,
+    title: 'Out of check: capture the attacker',
+    summary: 'One of three ways to escape check.',
+    intro:
+      'Your king on e1 is in CHECK: the black rook on e4 attacks it. When you are in check you must get out of it straight away. There are three ways: move the king, block the attack, or capture the attacking piece. Here, capture it with your knight.',
+    fen: '4k3/8/8/8/4r3/2N5/8/4K3 w - - 0 1',
+    steps: [
+      {
+        accept: ['Nxe4'],
+        hints: [
+          'Which of your pieces can reach the rook on e4?',
+          'Your knight on c3 jumps in an L-shape.',
+          'Nxe4: the knight captures the rook, and the check is gone.',
+        ],
+        focus: ['c3', 'e4'],
+        explain:
+          'The knight captured the rook, so nothing attacks your king any more — and you won a rook. Capturing the attacker is often the best way out of check.',
+      },
+    ],
+    otherGood: 'That also gets you out of check, but this lesson asks you to capture the attacking rook.',
+    source: 'Rules of chess (FIDE Laws of Chess, article 3)',
+  },
+  {
+    id: 'rules-check-block',
+    phase: 'basics',
+    tier: 'beginner',
+    rulesOnly: true,
+    title: 'Out of check: block the attack',
+    summary: 'Put a piece in the way.',
+    intro:
+      'The black rook on e5 is checking your king along the e-file. You can block the check by putting one of your pieces on a square in between. Use your bishop.',
+    fen: '4k3/8/8/4r3/8/3B4/8/4K3 w - - 0 1',
+    steps: [
+      {
+        accept: ['Be2', 'Be4'],
+        hints: [
+          'Which squares lie between the rook and your king?',
+          'e2, e3 and e4 are in between. Your bishop on d3 moves diagonally.',
+          'Be2 blocks the check, and your king protects the bishop there.',
+        ],
+        focus: ['d3', 'e2', 'e4'],
+        explain:
+          'The bishop now stands between the rook and the king, so the king is no longer in check. Tip: block with a piece that is protected (on e2 the king guards it), or the opponent may simply capture it.',
+      },
+    ],
+    otherGood: 'That gets out of check too, but this lesson asks you to block with the bishop.',
+    source: 'Rules of chess (FIDE Laws of Chess, article 3)',
+  },
+  {
+    id: 'rules-check-move',
+    phase: 'basics',
+    tier: 'beginner',
+    rulesOnly: true,
+    title: 'Out of check: move the king',
+    summary: 'Step to a safe square.',
+    intro:
+      'The black rook on a1 is checking your king along the first row. Nothing can capture it or block it, so the king must move to a square that is not attacked.',
+    fen: '7k/8/8/8/8/8/8/r3K3 w - - 0 1',
+    steps: [
+      {
+        accept: ['Kd2', 'Ke2', 'Kf2'],
+        hints: [
+          'Which squares around your king are NOT on the first row?',
+          'The rook controls the whole first row. Move up.',
+          'Ke2 (or Kd2/Kf2) steps off the attacked row.',
+        ],
+        focus: ['e1', 'd2', 'e2', 'f2'],
+        explain:
+          'The king moved off the attacked row. The board will never let you make a move that leaves your king in check — that is against the rules.',
+      },
+    ],
+    source: 'Rules of chess (FIDE Laws of Chess, article 3)',
+  },
+  {
+    id: 'rules-checkmate',
+    phase: 'basics',
+    tier: 'beginner',
+    rulesOnly: true,
+    title: 'Checkmate wins the game',
+    summary: 'Give check so that there is no escape.',
+    intro:
+      'CHECKMATE is check with no way out: the king cannot move to safety, the attack cannot be blocked, and the attacker cannot be captured. Checkmate ends the game. Your king on b6 is guarding a7 and b7. Find a queen move that checkmates the black king on a8.',
+    fen: 'k7/8/1K6/8/8/8/8/7Q w - - 0 1',
+    steps: [
+      {
+        accept: ['#'],
+        hints: [
+          'The black king is in the corner. Which squares can it still reach?',
+          'b8 is the only free square. Your queen can check along the top row.',
+          'Qh8# — the queen checks along the 8th row and covers b8; your king covers a7 and b7.',
+        ],
+        focus: ['h1', 'h8', 'b8'],
+        explain:
+          'Checkmate! The king is attacked and has nowhere to go. That is how you win a game of chess — you never actually capture the king.',
+      },
+    ],
+    otherGood: 'Look for a move that gives check AND leaves the king no escape square.',
+    source: 'Rules of chess (FIDE Laws of Chess, articles 1 and 5)',
+  },
+  {
+    id: 'rules-castle-kingside',
+    phase: 'basics',
+    tier: 'beginner',
+    rulesOnly: true,
+    title: 'Castling',
+    summary: 'The special move that moves the king and a rook together.',
+    intro:
+      'CASTLING is the only move in which two pieces move at once. The king moves TWO squares towards a rook, and that rook jumps over to the square next to the king. To castle, drag your king two squares to the right, from e1 to g1.',
+    fen: 'r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1',
+    steps: [
+      {
+        accept: ['O-O'],
+        hints: [
+          'Move the king, not the rook.',
+          'Drag the king from e1 two squares towards the rook on h1.',
+          'King to g1: the rook automatically jumps to f1.',
+        ],
+        focus: ['e1', 'g1', 'h1'],
+        explain:
+          'You castled "kingside". The king is tucked safely in the corner and the rook has come towards the centre. Castling towards the a-file rook (king to c1) is called "queenside" castling.',
+      },
+    ],
+    otherGood: 'That move is allowed, but try castling: move the king two squares to the right.',
+    source: 'Rules of chess (FIDE Laws of Chess, article 3.8)',
+  },
+  {
+    id: 'rules-castle-check',
+    phase: 'basics',
+    tier: 'beginner',
+    rulesOnly: true,
+    title: "When you can't castle",
+    summary: 'You may not castle through an attacked square.',
+    intro:
+      'You can only castle if: neither the king nor that rook has moved yet; there are no pieces between them; your king is not in check; and the king does not pass through or land on an attacked square. Here the black bishop on c4 attacks f1, so kingside castling is not allowed. Castle on the other side (king to c1).',
+    fen: '4k3/8/8/8/2b5/8/PPP2PPP/R3K2R w KQ - 0 1',
+    steps: [
+      {
+        accept: ['O-O-O'],
+        hints: [
+          'Kingside castling would take the king across f1, which the bishop attacks.',
+          'Castle towards the rook on a1 instead.',
+          'Move the king from e1 to c1: the rook jumps to d1.',
+        ],
+        focus: ['e1', 'c1', 'f1', 'c4'],
+        explain:
+          'Queenside castling: the king goes to c1 and the rook to d1. Notice that the board did not let you castle kingside — it would have taken your king through an attacked square.',
+      },
+    ],
+    otherGood: 'Try castling: move the king two squares towards the a1 rook.',
+    source: 'Rules of chess (FIDE Laws of Chess, article 3.8)',
+  },
+  {
+    id: 'rules-promotion',
+    phase: 'basics',
+    tier: 'beginner',
+    rulesOnly: true,
+    title: 'Pawn promotion',
+    summary: 'A pawn that reaches the far side becomes a new piece.',
+    intro:
+      'When a pawn reaches the last row it must be PROMOTED: it turns into a queen, rook, bishop or knight of your choice. You can have more than one queen! Move your pawn to e8 and choose the queen.',
+    fen: '8/4P3/8/k7/8/8/8/7K w - - 0 1',
+    steps: [
+      {
+        accept: ['e8=Q'],
+        notIt: {
+          'e8=R': 'Allowed, but a queen is worth more (9) than a rook (5). Almost always choose the queen.',
+          'e8=B': 'Allowed, but a queen is worth more (9) than a bishop (3). Almost always choose the queen.',
+          'e8=N': 'Allowed — very occasionally a knight is right — but usually choose the queen.',
+        },
+        hints: [
+          'Your pawn is one step from the far side.',
+          'Move the pawn from e7 to e8, then pick a piece.',
+          'e8=Q — the pawn becomes a queen.',
+        ],
+        focus: ['e7', 'e8'],
+        explain:
+          'Your pawn is now a queen, the most powerful piece. This is why pawns matter so much in the endgame: each one is a queen in waiting.',
+      },
+    ],
+    source: 'Rules of chess (FIDE Laws of Chess, article 3.7)',
+  },
+  {
+    id: 'rules-en-passant',
+    phase: 'basics',
+    tier: 'beginner',
+    rulesOnly: true,
+    title: 'En passant',
+    summary: 'The unusual pawn capture.',
+    intro:
+      'Black has just moved a pawn two squares, from d7 to d5, landing right beside your pawn on e5. For ONE move only, your pawn may capture it "en passant" (French for "in passing"): move diagonally to d6, as if Black\'s pawn had moved only one square.',
+    fen: '4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 2',
+    steps: [
+      {
+        accept: ['exd6'],
+        hints: [
+          "The black pawn skipped past d6. Your pawn can capture it as if it had stopped there.",
+          'Move your e5 pawn diagonally to d6.',
+          'exd6 en passant: the black pawn on d5 disappears.',
+        ],
+        focus: ['e5', 'd6', 'd5'],
+        explain:
+          'You captured en passant: your pawn moved to d6 and the black pawn on d5 was removed. This is only possible on the very next move after the two-square pawn move.',
+      },
+    ],
+    otherGood: 'That move is allowed, but try the special capture: pawn from e5 to d6.',
+    source: 'Rules of chess (FIDE Laws of Chess, article 3.7)',
+  },
+];
+
 export function lessonsFor(phase: Phase, tier?: Tier) {
   return LESSONS.filter((l) => l.phase === phase && (!tier || l.tier === tier));
 }
@@ -684,3 +926,5 @@ export function lessonsFor(phase: Phase, tier?: Tier) {
 export function lessonById(id: string) {
   return LESSONS.find((l) => l.id === id);
 }
+
+export const LESSONS: Lesson[] = [...MAIN_LESSONS, ...RULE_LESSONS];

@@ -275,3 +275,31 @@ p { margin: 0 0 0.75em; }
    black and white pieces are both visible in light and dark mode. */
 .captured:not(:empty) { background: #f0d9b5; border: 1px solid #b58863; border-radius: 999px; padding: 1px 10px 1px 4px; }
 .captured .lead { color: #1d6b38 !important; }
+
+/* First steps course */
+.first-steps { display: flex; gap: 14px; align-items: center; text-decoration: none; color: var(--text); border: 2px solid var(--accent); margin-top: 12px; }
+.first-steps strong { display: block; font-size: 1.1rem; margin-bottom: 2px; }
+.first-steps .muted { display: block; font-size: 0.92rem; }
+.first-steps:hover { background: var(--surface-2); }
+.chapter-list { list-style: none; padding: 0; margin: 20px 0; counter-reset: ch; }
+.chapter-list li a {
+  display: grid; grid-template-columns: 2.2em 1fr 1.4em; gap: 10px; align-items: center;
+  padding: 10px 8px; border-radius: 10px; color: var(--text); text-decoration: none; border-bottom: 1px solid var(--border);
+}
+.chapter-list li a:hover { background: var(--surface-2); }
+.chapter-icon { font-size: 1.6rem; line-height: 1; text-align: center; }
+.basics p { font-size: 1.05rem; line-height: 1.6; }
+.basics h1 { font-size: 1.8rem; display: flex; align-items: center; gap: 8px; }
+.diagram { margin: 16px 0; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+.diagram figcaption { flex: 1 1 200px; color: var(--muted); }
+.key-points { background: var(--surface-2); border-radius: var(--radius); padding: 14px 16px; margin: 20px 0; }
+.key-points h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.key-points ul { margin: 0; padding-left: 1.2em; }
+.key-points li { margin: 4px 0; font-size: 1.02rem; }
+.drill-board { --board: min(calc(100vw - 64px), 420px); width: var(--board); height: var(--board); margin: 8px auto; }
+.task { font-weight: 600; min-height: 3em; }
+.square-name { font: 700 1.4rem ui-monospace, monospace; color: var(--accent); }
+.drill-status { min-height: 1.5em; }
+.drill-status.good { color: var(--good); font-weight: 600; }
+.drill-status.bad { color: var(--bad); font-weight: 600; }
+.chapter-nav { display: flex; gap: 8px; flex-wrap: wrap; margin: 24px 0; }

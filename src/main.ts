@@ -5,6 +5,7 @@ import './styles.css';
 
 import { renderComputer, renderLocal, renderOnline, renderOnlineLobby } from './game/play';
 import { renderGuide, renderLearnHub, renderLesson } from './learn/view';
+import { renderBasicsChapter, renderBasicsHub } from './learn/basics-view';
 import { lessonById, type Phase } from './learn/lessons';
 import { h } from './ui/dom';
 import { normaliseCode } from './net/online';
@@ -29,6 +30,7 @@ function home(container: HTMLElement): Cleanup {
         tile('#/online', '♞', 'Play online', 'Two devices, one game. Share a code or link.'),
         tile('#/local', '♟', 'Pass and play', 'Two players on this device.'),
         tile('#/computer', '♜', 'Play the computer', 'Four strengths, with a coach that explains.'),
+        tile('#/learn/basics', '♙', 'First steps', 'Never played? Learn the rules and how each piece moves.'),
         tile('#/learn', '♛', 'Learn', 'Guides and lessons for the opening, middlegame and endgame.'),
       ),
       h(
@@ -62,7 +64,8 @@ function route() {
       else cleanup = renderOnlineLobby(main);
       break;
     case 'learn':
-      if (b === 'guide' && c) cleanup = renderGuide(main, c as Phase);
+      if (b === 'basics') cleanup = c ? renderBasicsChapter(main, c) : renderBasicsHub(main);
+      else if (b === 'guide' && c) cleanup = renderGuide(main, c as Phase);
       else if (b === 'lesson' && c) cleanup = renderLesson(main, c);
       else if (b === 'practice' && c) {
         const l = lessonById(c);
