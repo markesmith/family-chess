@@ -12,7 +12,8 @@
     "prebuild": "npm run copy-engine",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
-    "verify-lessons": "node --experimental-strip-types scripts/verify-lessons.ts"
+    "verify-lessons": "node --experimental-strip-types scripts/verify-lessons.ts",
+    "audit-coach": "node --experimental-strip-types scripts/audit-coach.ts"
   },
   "dependencies": {
     "chess.js": "^1.4.0",

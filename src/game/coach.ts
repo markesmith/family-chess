@@ -54,6 +54,22 @@ export function isLoose(chess: Chess, sq: Square): boolean {
   return attackers.some((a) => VALUE[chess.get(a)!.type] < VALUE[p.type]);
 }
 
+/**
+ * How safe is the piece on `sq`?
+ *  safe      — no enemy piece attacks it
+ *  protected — attacked, but defended and every attacker is worth at least as much
+ *  loose     — it can be won (undefended, or attacked by something cheaper)
+ */
+export function landing(chess: Chess, sq: Square): { status: 'safe' | 'protected' | 'loose'; cheapest?: PieceSymbol } {
+  const p = chess.get(sq);
+  if (!p) return { status: 'safe' };
+  const attackers = chess.attackers(sq, other(p.color)).map((a) => chess.get(a)!.type);
+  if (!attackers.length) return { status: 'safe' };
+  const cheapest = attackers.reduce((a, b) => (VALUE[a] <= VALUE[b] ? a : b));
+  if (p.type === 'k') return { status: 'loose', cheapest };
+  return { status: isLoose(chess, sq) ? 'loose' : 'protected', cheapest };
+}
+
 function materialCount(chess: Chess) {
   return allPieces(chess).filter((p) => p.type !== 'k' && p.type !== 'p').length;
 }
@@ -154,58 +170,82 @@ export function explainMove(
     );
   }
 
+  // How safe is the moved piece on its new square? Every claim below depends on this.
+  const land = landing(after, move.to as Square);
+  const engineLine = analysis && analysis.pv.length > 1 ? pvToSan(fen, analysis.pv, 6) : '';
+  const justify = engineLine
+    ? ` The engine has calculated that it works: ${engineLine}.`
+    : ' The engine has calculated that it still works out well.';
+  const landWords =
+    land.status === 'protected'
+      ? `it can be attacked there by ${opp ? 'your' : 'the'} ${PIECE_NAME[land.cheapest!]}, but it is protected, so taking it would ${VALUE[land.cheapest!] === VALUE[move.piece] ? 'only be an even trade' : `cost ${opp ? 'you' : 'your opponent'} material`}`
+      : '';
+
   // 3. Captures
   if (move.captured) {
     const capName = PIECE_NAME[move.captured];
-    const wasDefended = isDefended(before, move.to as Square, them);
-    const recapturable = after.isAttacked(move.to as Square, them);
+    const gain = VALUE[move.captured] - VALUE[move.piece];
     if (move.isEnPassant()) {
       themes.push('en passant');
       reasons.push(`${move.san} captures en passant: the pawn that just moved two squares can be taken as if it moved one.`);
-    } else if (!wasDefended || !recapturable) {
+    } else if (land.status === 'safe') {
       themes.push('free material');
       idea ||= simple
         ? 'One of your opponent\'s pieces is not protected. Can you take it for free?'
         : 'Count attackers and defenders: something of your opponent\'s is insufficiently protected.';
       reasons.push(
         opp
-          ? `${move.san} wins your ${capName} on ${move.to} for free — nothing can safely take back. Before each move, check what your opponent could capture.`
-          : `${move.san} wins the ${capName} on ${move.to} for free — nothing can safely take back. Always check: "Is that piece defended?"`,
+          ? `${move.san} wins your ${capName} on ${move.to} for free — nothing can take back. Before each move, check what your opponent could capture.`
+          : `${move.san} wins the ${capName} on ${move.to} for free — nothing can take back. Always check: "Is that piece defended?"`,
       );
-    } else if (VALUE[move.captured] > VALUE[move.piece]) {
+    } else if (land.status === 'protected' && gain < 0) {
+      themes.push('wins material');
+      idea ||= simple ? 'Something can be captured safely. Count attackers and defenders.' : 'Count attackers and defenders on each target.';
+      reasons.push(
+        `${move.san} wins ${opp ? 'your' : 'a'} ${capName}. ${opp ? 'If you' : 'If the opponent'} take${opp ? '' : 's'} back on ${move.to}, ${opp ? 'the computer recaptures' : 'you recapture'}, so ${opp ? 'it stays' : 'you stay'} ahead.`,
+      );
+    } else if (gain > 0) {
       themes.push('winning trade');
       idea ||= 'You can trade a cheaper piece for a more valuable one.';
       reasons.push(
-        `${move.san} gives up a ${piece} (worth ${VALUE[move.piece]}) for a ${capName} (worth ${VALUE[move.captured]}). Even after a recapture, ${opp ? 'the computer comes' : 'you come'} out ahead.`,
+        `${move.san} gives up at most a ${piece} (worth ${VALUE[move.piece]}) for a ${capName} (worth ${VALUE[move.captured]}). Even after a recapture, ${opp ? 'the computer comes' : 'you come'} out ahead.`,
       );
-    } else {
+    } else if (gain === 0) {
       themes.push('exchange');
       reasons.push(
-        `${move.san} trades pieces. ${simple ? 'Trading is good when it removes an attacker or when you are ahead in material.' : 'Exchanges help when they remove a key defender or attacker, or simplify into a winning endgame when ahead.'}`,
+        `${move.san} trades a ${piece} for a ${capName} of equal value. ${simple ? 'Trading is good when it removes an attacker or when you are ahead in material.' : 'Exchanges help when they remove a key defender or attacker, or simplify into a winning endgame when ahead.'}`,
       );
+    } else {
+      themes.push('sacrifice');
+      reasons.push(`${move.san} captures the ${capName}, but the ${piece} can then be taken, so material is given up for now.${justify}`);
     }
   }
 
-  // 4. Forks and threats created by the moved piece
+  // 4. Forks and threats created by the moved piece (only if the piece itself can't simply be taken)
   const targets = allPieces(after).filter(
     (p) => p.color === them && after.attackers(p.sq, me).includes(move.to as Square),
   );
   const valuable = targets.filter(
     (t) => t.type === 'k' || VALUE[t.type] > VALUE[move.piece] || !isDefended(after, t.sq, them),
   );
-  if (valuable.length >= 2 && !after.isCheckmate()) {
+  if (land.status !== 'loose' && valuable.length >= 2 && !after.isCheckmate()) {
     themes.push('fork');
     const names = valuable.map((t) => `${PIECE_NAME[t.type]} on ${t.sq}`).join(' and ');
     idea ||= simple
       ? 'One of your pieces can attack two things at once. That is called a fork.'
       : 'Look for a double attack: one move that creates two threats the opponent cannot both meet.';
     reasons.push(
-      `${move.san} is a fork: the ${piece} attacks ${opp ? 'your' : 'the'} ${names} at the same time. ${opp ? 'You' : 'The opponent'} can only save one.`,
+      `${move.san} is a fork: the ${piece} attacks ${opp ? 'your' : 'the'} ${names} at the same time${land.status === 'protected' ? ` (${landWords})` : ''}. ${opp ? 'You' : 'The opponent'} can only save one.`,
     );
-  } else if (valuable.length === 1 && valuable[0].type !== 'k' && !move.captured) {
+  } else if (land.status !== 'loose' && valuable.length === 1 && valuable[0].type !== 'k' && !move.captured) {
     themes.push('threat');
     reasons.push(
       `${move.san} attacks ${opp ? 'your' : 'the'} ${PIECE_NAME[valuable[0].type]} on ${valuable[0].sq}, so ${theyMust} spend a move dealing with it.`,
+    );
+  } else if (land.status === 'loose' && !move.captured && !after.isCheckmate() && (valuable.length || after.inCheck())) {
+    themes.push('sacrifice');
+    reasons.push(
+      `${move.san} puts the ${piece} where it can be captured, but it creates threats${valuable.length ? ` against ${opp ? 'your' : 'the'} ${valuable.map((t) => PIECE_NAME[t.type]).join(' and ')}` : ''}.${justify}`,
     );
   }
 
@@ -219,16 +259,19 @@ export function explainMove(
     );
   }
 
-  // 6. Escaping an attack
+  // 6. Escaping an attack — and say honestly how safe the new square is
   if (!move.captured && isLoose(before, move.from as Square)) {
     themes.push('rescue');
     idea ||= simple
       ? 'One of your pieces is in danger. Which one is under attack?'
       : 'Before your own plans, check what your opponent is threatening.';
+    const owner = opp ? `${Your} ${piece}` : `Your ${piece}`;
+    let where: string;
+    if (land.status === 'safe') where = `${move.san} moves it to ${move.to}, where nothing can attack it.`;
+    else if (land.status === 'protected') where = `${move.san} moves it to ${move.to}: ${landWords}.`;
+    else where = `${move.san} moves it away, although on ${move.to} it can still be captured.${justify}`;
     reasons.push(
-      opp
-        ? `${Your} ${piece} on ${move.from} was under attack and not safely protected, so ${move.san} moves it to safety.`
-        : `Your ${piece} on ${move.from} was under attack and not safely protected. ${move.san} moves it to safety. Always ask "What is my opponent threatening?" before you move.`,
+      `${owner} on ${move.from} was under attack and not safely protected. ${where}${opp ? '' : ' Always ask "What is my opponent threatening?" before you move.'}`,
     );
   }
 
